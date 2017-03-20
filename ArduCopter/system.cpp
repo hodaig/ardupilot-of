@@ -286,6 +286,10 @@ void Copter::init_ardupilot()
     ins.set_raw_logging(should_log(MASK_LOG_IMU_RAW));
     ins.set_dataflash(&DataFlash);
 
+    opticalFlowPi.init();
+    natNet.init();
+
+
     cliSerial->print("\nReady to FLY ");
 
     // flag that initialisation has completed

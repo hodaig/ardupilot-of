@@ -103,10 +103,22 @@ class Board:
 
         env.CXXFLAGS += [
             '-std=gnu++11',
+            
+            '-I/usr/include/opencv',
+            '-I/usr/local/include/',
+            '-lopencv_core',
+            '-lopencv_imgproc',
+            '-lopencv_highgui',
+            '-lopencv_video',
+            '-lraspicam',
+            '-lraspicam_cv',
+            
+            '-lboost_system',
+            '-lboost_thread',
 
             '-fdata-sections',
             '-ffunction-sections',
-            '-fno-exceptions',
+            #'-fno-exceptions',
             '-fsigned-char',
 
             '-Wall',

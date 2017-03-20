@@ -89,6 +89,9 @@
 #include <AC_InputManager/AC_InputManager_Heli.h>   // Heli specific pilot input handling library
 #include <AP_Button/AP_Button.h>
 
+#include <AP_OpticalFlowPi/AP_OpticalFlowPi.h>
+#include <AP_NatNet/AP_NatNet.h>
+
 // Configuration
 #include "defines.h"
 #include "config.h"
@@ -214,6 +217,8 @@ private:
 #if OPTFLOW == ENABLED
     OpticalFlow optflow{ahrs};
 #endif
+    OpticalFlowPi opticalFlowPi{ahrs};
+    NatNet_client natNet;
 
     // gnd speed limit required to observe optical flow sensor limits
     float ekfGndSpdLimit;

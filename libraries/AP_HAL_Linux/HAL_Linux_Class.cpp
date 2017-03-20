@@ -10,6 +10,7 @@
 #include <AP_HAL_Empty/AP_HAL_Empty.h>
 #include <AP_HAL_Empty/AP_HAL_Empty_Private.h>
 #include <AP_Module/AP_Module.h>
+#include <AP_NatNet/AP_NatNet.h>
 
 #include "AnalogIn_ADS1115.h"
 #include "AnalogIn_IIO.h"
@@ -266,7 +267,8 @@ void _usage(void)
 void HAL_Linux::run(int argc, char* const argv[], Callbacks* callbacks) const
 {
     const char *module_path = AP_MODULE_DEFAULT_DIRECTORY;
-    
+    const char* serverAddress=0, localAddress=0;
+
     assert(callbacks);
 
     int opt;
@@ -284,11 +286,13 @@ void HAL_Linux::run(int argc, char* const argv[], Callbacks* callbacks) const
         {"log-directory",       true,  0, 'l'},
         {"terrain-directory",   true,  0, 't'},
         {"module-directory",    true,  0, 'M'},
+        {"natNet-server",       true,  0, 's'},
+        {"natNet-client",       true,  0, 'c'},
         {"help",                false,  0, 'h'},
         {0, false, 0, 0}
     };
 
-    GetOptLong gopt(argc, argv, "A:B:C:D:E:F:l:t:he:SM:",
+    GetOptLong gopt(argc, argv, "A:B:C:D:E:F:l:t:he:SM:s:c:",
                     options);
 
     /*
@@ -331,6 +335,12 @@ void HAL_Linux::run(int argc, char* const argv[], Callbacks* callbacks) const
         case 'M':
             module_path = gopt.optarg;
             break;
+        case 's':
+            NatNet_client::_paramsServer = gopt.optarg;
+            break;
+        case 'c':
+            NatNet_client::_paramsLocal = gopt.optarg;
+            break;
         case 'h':
             _usage();
             exit(0);
@@ -363,6 +373,7 @@ void HAL_Linux::run(int argc, char* const argv[], Callbacks* callbacks) const
     AP_Module::call_hook_setup_start();
     callbacks->setup();
     AP_Module::call_hook_setup_complete();
+
 
     for (;;) {
         callbacks->loop();
