@@ -59,6 +59,7 @@ COMMON_VEHICLE_DEPENDENT_LIBRARIES = [
     'AP_ICEngine',
     'AP_OpticalFlowPi',
     'AP_NatNet',
+    'AP_Vision',
 ]
 
 def get_legacy_defines(sketch_name):

@@ -91,6 +91,7 @@
 
 #include <AP_OpticalFlowPi/AP_OpticalFlowPi.h>
 #include <AP_NatNet/AP_NatNet.h>
+#include <AP_Vision/AP_Vision.h>
 
 // Configuration
 #include "defines.h"
@@ -219,6 +220,8 @@ private:
 #endif
     OpticalFlowPi opticalFlowPi{ahrs};
     NatNet_client natNet;
+    //Vision vision;
+    VisionHanoch vision;
 
     // gnd speed limit required to observe optical flow sensor limits
     float ekfGndSpdLimit;

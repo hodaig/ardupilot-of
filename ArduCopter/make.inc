@@ -63,3 +63,4 @@ LIBRARIES += AP_ADSB
 LIBRARIES += AP_Avoidance
 LIBRARIES += AP_OpticalFlowPi
 LIBRARIES += AP_NatNet
+LIBRARIES += AP_Vision

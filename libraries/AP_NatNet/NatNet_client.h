@@ -37,6 +37,8 @@ public:
 
     bool healthy() const { return _flags.healthy; }
 
+    bool initialized() const {return _flags.ready;}
+
     // read latest values and store them (grab)
     void update(void);
 
@@ -65,7 +67,10 @@ private:
     } _flags;
 
     Vector3f   _location;
-    Quaternion _orientation;
+    float _roll;
+    float _pitch;
+    float _yaw;
+
 
     // TODO
     //uint32_t _lastUpdate;

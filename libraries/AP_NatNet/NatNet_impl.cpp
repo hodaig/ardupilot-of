@@ -28,7 +28,6 @@ NatNet_impl::~NatNet_impl() {
 }
 
 NatNet_impl::NatNet_impl(): _runing(false), _natNetMajor(0), _natNetMinor(0){
-    // TODO Auto-generated constructor stub
     _raw.valid = false;
     _raw.data = new MocapFrame();
 }
@@ -75,6 +74,29 @@ bool NatNet_impl::getLocation( Vector3f& Vout){
     return true;
 }
 
+void GetEulers_hanoch(float qx, float qy, float qz, float qw,
+        float* radYaw, float* radPitch, float* radRoll)
+{
+    //float &heading = *angle1;
+    //float &attitude = *angle2;
+    //float &bank = *angle3;
+
+    //float test = -qx * qy * qz * qw;
+    //float radYaw, radPitch, radRoll;
+
+
+    //radYaw = (float) atan2(2.0f * (qy * qw - qx * qz),1.0f - 2.0f * (qy * qy - qz * qz));
+    //radPitch = (float) asin(2.0f * qx * qy + 2.0f * qz * qw);
+    //radRoll = (float) atan2(2.0f * qx * qw - 2.0f * qy * qz, 1.0f - 2.0f * qx * qx - 2.0f * qz * qz);
+    *radYaw = (float) atan2(2.0f * (qy * qw - qx * qz),1.0f - 2.0f * (qy * qy - qz * qz));
+    *radPitch = (float) asin(2.0f * qx * qy + 2.0f * qz * qw);
+    *radRoll = (float) atan2(2.0f * qx * qw - 2.0f * qy * qz, 1.0f - 2.0f * qx * qx - 2.0f * qz * qz);
+
+    //heading = 57*(radYaw);
+    //attitude = 57*(radPitch);
+    //bank = 57*(radRoll);
+}
+
 bool NatNet_impl::getOrientation( Quaternion& Qout){
     if (!isValid()){
         return false;
@@ -85,7 +107,39 @@ bool NatNet_impl::getOrientation( Quaternion& Qout){
     }
 
     Quaternion4f oriNatnet = _raw.data->rigidBodies().front().orientation();
-    Qout(oriNatnet.qw, oriNatnet.qz, oriNatnet.qy, oriNatnet.qx);
+
+    float pitch, roll, yaw;
+    GetEulers_hanoch(oriNatnet.qx, oriNatnet.qy, oriNatnet.qz, oriNatnet.qw,
+            &yaw, &pitch, &roll);
+
+    Qout.from_euler(roll, pitch, yaw);
+
+    return true;
+}
+bool NatNet_impl::getOrientation(float* pitch, float* roll, float* yaw){
+    if (!isValid()){
+        return false;
+    }
+
+    if (_raw.data->rigidBodies().empty()){
+        return false;
+    }
+
+    float dummi;
+    if (NULL == pitch){
+        pitch = &dummi;
+    }
+    if (NULL == roll){
+        roll = &dummi;
+    }
+    if (NULL == yaw){
+        yaw = &dummi;
+    }
+
+    Quaternion4f oriNatnet = _raw.data->rigidBodies().front().orientation();
+
+    GetEulers_hanoch(oriNatnet.qx, oriNatnet.qy, oriNatnet.qz, oriNatnet.qw,
+            yaw, pitch, roll);
 
     return true;
 }

@@ -51,6 +51,8 @@ public:
 
     bool getOrientation( Quaternion& Qout);
 
+    bool getOrientation(float* pitch, float* roll, float* yaw);
+
     bool isValid();
 
 };

@@ -1,7 +1,9 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 #include "Copter.h"
+#include "MyLogger.h"
 
 #define RADIAN_TO_DEG(r) ((r)*90.0/ M_PI_2)
+#define RCIN(n) (g.rc_##n.get_radio_in())
 
 static uint32_t lastUpdate;
 static uint32_t lastStats;
@@ -10,9 +12,10 @@ static float sumX[2];
 static float sumY[2];
 
 /* controller variables */
-static float alt_I;
 
 static float angle_yaw_initial_rad;
+
+static MyLogger myLogger("ArduCopter/logOut.csv");
 
 
 //static float get_yaw_error(float yaw_angle, float desier_yaw_rate){
@@ -35,43 +38,662 @@ static float get_yaw_error(float yaw_angle, bool update_angle){
 // acro_init - initialise acro controller
 bool Copter::acro_init(bool ignore_checks)
 {
-   // if landed and the mode we're switching from does not have manual throttle and the throttle stick is too high
-   if (motors.armed() && ap.land_complete && !mode_has_manual_throttle(control_mode) && (get_pilot_desired_throttle(channel_throttle->get_control_in()) > get_non_takeoff_throttle())) {
-       return false;
-   }
-   // set target altitude to zero for reporting
-   pos_control.set_alt_target(0);
+    // if landed and the mode we're switching from does not have manual throttle and the throttle stick is too high
+    if (motors.armed() && ap.land_complete && !mode_has_manual_throttle(control_mode) && (get_pilot_desired_throttle(channel_throttle->get_control_in()) > get_non_takeoff_throttle())) {
+        return false;
+    }
+    // set target altitude to zero for reporting
+    pos_control.set_alt_target(0);
 
-   lastStats=0;
-   lastPrint=0;
-   lastUpdate=0;
-   sumX[0] = 0;
-   sumX[1] = 0;
-   sumY[0] = 0;
-   sumY[1] = 0;
+    lastStats=0;
+    lastPrint=0;
+    lastUpdate=0;
+    sumX[0] = 0;
+    sumX[1] = 0;
+    sumY[0] = 0;
+    sumY[1] = 0;
 
-   alt_I = 0.0;
-   angle_yaw_initial_rad = 0.0;
+    angle_yaw_initial_rad = 0.0;
 
-   return true;
+#define log_NN_pich 0
+    myLogger.printVal(log_NN_pich, "natnet pitch");
+#define log_NN_roll 1
+    myLogger.printVal(log_NN_roll, "natnet roll");
+#define log_NN_yaw 2
+    myLogger.printVal(log_NN_yaw, "natnet yaw");
+
+#define log_NN_X 3
+    myLogger.printVal(log_NN_X, "natnet x");
+#define log_NN_Z 4
+    myLogger.printVal(log_NN_Z, "natnet z");
+#define log_NN_alt 5
+    myLogger.printVal(log_NN_alt, "natnet alt");
+
+#define log_cmd_pitch 6
+    myLogger.printVal(log_cmd_pitch, "cmd pitch");
+#define log_cmd_roll 7
+    myLogger.printVal(log_cmd_roll, "cmd roll");
+#define log_cmd_yaw 8
+    myLogger.printVal(log_cmd_yaw, "cmd yaw");
+#define log_cmd_throtle 9
+    myLogger.printVal(log_cmd_throtle, "cmd throtle");
+
+
+
+#define log_rangefinder 10
+    //myLogger.printVal(log_rangefinder, "rangefinder");
+
+
+
+#define log_VISION_pich 11
+    //myLogger.printVal(log_VISION_pich, "vision pitch");
+#define log_VISION_roll 12
+    //myLogger.printVal(log_VISION_roll, "vision roll");
+#define log_VISION_yaw 13
+    //myLogger.printVal(log_VISION_yaw, "vision yaw");
+#define log_VISION_status 14
+    myLogger.printVal(log_VISION_status, "vision status");
+#define log_VISION_dots 15
+    myLogger.printVal(log_VISION_dots, "num of dots found");
+#define log_VISION_mass 16
+    myLogger.printVal(log_VISION_mass, "mass");
+
+
+#define log_VISION_p1x_cam 17
+    myLogger.printVal(log_VISION_p1x_cam, "p1x vid");
+#define log_VISION_p1y_cam 18
+    myLogger.printVal(log_VISION_p1y_cam, "p1y vid");
+#define log_VISION_p1x_est 19
+   // myLogger.printVal(log_VISION_p1x_est, "p1x est");
+#define log_VISION_p1y_est 20
+   // myLogger.printVal(log_VISION_p1y_est, "p1y est");
+
+#define log_VISION_p2x_cam 21
+    myLogger.printVal(log_VISION_p2x_cam, "p2x vid");
+#define log_VISION_p2y_cam 22
+    myLogger.printVal(log_VISION_p2y_cam, "p2y vid");
+#define log_VISION_p2x_est 23
+  //  myLogger.printVal(log_VISION_p2x_est, "p2x est");
+#define log_VISION_p2y_est 24
+   // myLogger.printVal(log_VISION_p2y_est, "p2y est");
+
+#define log_VISION_p3x_cam 25
+    myLogger.printVal(log_VISION_p3x_cam, "p3x vid");
+#define log_VISION_p3y_cam 26
+    myLogger.printVal(log_VISION_p3y_cam, "p3y vid");
+#define log_VISION_p3x_est 27
+   // myLogger.printVal(log_VISION_p3x_est, "p3x est");
+#define log_VISION_p3y_est 28
+   // myLogger.printVal(log_VISION_p3y_est, "p3y est");
+
+#define log_VISION_p4x_cam 29
+    myLogger.printVal(log_VISION_p4x_cam, "p4x vid");
+#define log_VISION_p4y_cam 30
+    myLogger.printVal(log_VISION_p4y_cam, "p4y vid");
+#define log_VISION_p4x_est 31
+    //myLogger.printVal(log_VISION_p4x_est, "p4x est");
+#define log_VISION_p4y_est 32
+    //myLogger.printVal(log_VISION_p4y_est, "p4y est");
+
+#define log_VISION_Sx 33
+    myLogger.printVal(log_VISION_Sx, "vision Sx");
+#define log_VISION_Sy 34
+    myLogger.printVal(log_VISION_Sy, "vision Sy");
+#define log_VISION_Vd 35
+    myLogger.printVal(log_VISION_Vd, "vision Vd");
+#define log_VISION_Vd_filt 36
+    myLogger.printVal(log_VISION_Vd_filt, "vision Vd-filt");
+
+#define log_vel_x 37
+    myLogger.printVal(log_vel_x, "vel x");
+#define log_vel_x_filt 38
+    myLogger.printVal(log_vel_x_filt, "vel x-filt");
+
+#define log_VISION_X 39
+    //myLogger.printVal(log_VISION_X, "vision x");
+
+
+    return true;
 }
+
 
 // acro_run - runs the acro controller
 // should be called at 100hz or more
 void Copter::acro_run()
 {
     float pilot_roll, pilot_pitch, pilot_yaw;
-    float pilot_throttle_scaled, pilot_throttle;
-    uint32_t optFlow_interval_ms = 100; // apply opticflow at 10Hz
-    uint32_t now = AP_HAL::millis();
+    float pilot_throttle;
+    //uint32_t now = AP_HAL::millis();
+    uint32_t now_us = AP_HAL::micros();
+
+    static bool loging;
+    if (RCIN(6) > 1500){
+        if (!loging){
+            loging = true;
+            printf("start logging sw: %d\n", RCIN(6));
+        }
+        myLogger.flashLine();
+    } else {
+        if (loging){
+            loging = false;
+            printf("stop logging sw: %d\n", RCIN(6));
+            vision.showStatistics();
+        }
+    }
 
     bool need_print = false;
-    if (lastPrint + 300 < now){
-        lastPrint = now;
+    if (300*1000 < (now_us - lastPrint) ||
+            (now_us < lastPrint) ){ // now_us 32bit ovweflow
+        lastPrint = now_us;
         need_print = true;
     }
 
+
+    /*******************************/
+    /******* sensors update ********/
+    /*******************************/
+
+    static float cur_alt = 0.0f; // y axis
+    static float cur_x = 0.0f;
+    static float cur_z = 0.0f;
+    static float yaw_angle = 0.0f;
+
+#define NATNET 1
+#define NATNET_POS_HOLD 1
+#if NATNET
+    natNet.update();
+    if (natNet.healthy()){
+        cur_alt = natNet.getLocation().y;
+        cur_x = natNet.getLocation().x;
+        cur_z = natNet.getLocation().z;
+        //roll_angle =  natNet.get_euler_roll();
+        //pitch_angle = natNet.get_euler_pitch();
+        yaw_angle =   natNet.get_euler_yaw();
+        myLogger.putVal(log_NN_pich, natNet.get_euler_pitch());
+        myLogger.putVal(log_NN_roll, natNet.get_euler_roll());
+        myLogger.putVal(log_NN_yaw, natNet.get_euler_yaw());
+        myLogger.putVal(log_NN_X, cur_x);
+        myLogger.putVal(log_NN_Z, cur_z);
+        myLogger.putVal(log_NN_alt, cur_alt);
+    }
+#else
+    //cur_alt = (rangefinder_state.alt_cm_filt.get()/100.0) - 0.3;
+    cur_alt = (rangefinder.distance_cm()/100.0f) - 0.3f;
+    //cur_alt = cur_alt*0.5f + (((float)rangefinder_state.alt_cm/100.0f) - 0.3f)*0.5f;
+#endif
+    static float rangefinder_filt = 0;
+    rangefinder_filt = rangefinder_filt*0.99 + (rangefinder.distance_cm()/100.0f)*0.01;
+    myLogger.putVal(log_rangefinder, (rangefinder.distance_cm()/100.0f));
+
+
+    // x->roll axis (acc:back gyro:rigth)
+    // y->pich axis (acc:left gyro:back)
+    // z->yaw axis (acc:up gyro:rigth)
+    //const Vector3f insAccel = ins.get_accel(); // vector of current accelerations in m/s/s
+    const Vector3f insGyro = ins.get_gyro();   // vector of rotational rates in radians/sec
+
+    Quaternion attitude_vehicle_quat;
+    attitude_vehicle_quat.from_rotation_matrix(ahrs.get_rotation_body_to_ned());
+    float roll_angle =  attitude_vehicle_quat.get_euler_roll();
+    float pitch_angle = attitude_vehicle_quat.get_euler_pitch();
+    //float yaw_angle =   attitude_vehicle_quat.get_euler_yaw();
+
 #if 0
+    if (need_print){
+        printf("switches: 5:%d, 6:%d, 7:%d, 8:%d, 9:%d\n", RCIN(5), RCIN(6), RCIN(7), RCIN(8), RCIN(9));
+        //printf("cur_alt %6.3f\n", cur_alt);
+        printf("natnet       x:%6.3f y:%6.3f , z:%6.3f HEL:%d\n", natNet.getLocation().x, natNet.getLocation().y, natNet.getLocation().z, natNet.healthy());
+        //printf("natnet       roll:%6.3f pitch:%6.3f , yaw:%6.3f HEL:%d\n", natNet.get_euler_roll(), natNet.get_euler_pitch(), natNet.get_euler_yaw(), natNet.healthy());
+        //printf("att          roll:%6.3f pitch:%6.3f , yaw:%6.3f\n", roll_angle, pitch_angle, yaw_angle);
+
+    }
+    // just for ignoring compilation errors
+    if (need_print & 0){
+        printf("insGyro = [%6.3f , %6.3f , %6.3f]\n", insGyro.x, insGyro.y, insGyro.z);
+        //printf("insAccel = [%6.3f , %6.3f , %6.3f]  insGyro = [%6.3f , %6.3f , %6.3f]\n", insAccel.x, insAccel.y, insAccel.z, insGyro.x, insGyro.y, insGyro.z);
+    }
+
+#endif
+
+    /*******************************/
+    /******* vision update *********/
+    /*******************************/
+    bool newVisionData = false;
+
+#define VISION_CONTROL 1
+#define VISION 1
+#if VISION
+
+    static int pointCount = 0;
+    static ip_point p[6];
+
+    if (vision.update()){
+        if (vision.healthy()){
+            // new data!
+            newVisionData = true;
+            pointCount = vision.getBestPoints(p, 6); // TODO - for testing
+            if (4 == pointCount){
+                vision.reorderPoints(p);
+            }
+            if (0 < pointCount){
+                myLogger.putVal(log_VISION_mass, p[0].mass);
+            }
+            myLogger.putVal(log_VISION_status, 1);
+#  if 0
+            if (vision.estimatePosition()){
+                // Success
+                myLogger.putVal(log_VISION_pich, vision.getPitch());
+                myLogger.putVal(log_VISION_roll, vision.getRoll());
+                myLogger.putVal(log_VISION_yaw, vision.getYaw());
+                myLogger.putVal(log_VISION_X, vision.getLocX());
+
+                myLogger.putVal(log_VISION_status, 2);
+            } else {
+            }
+#  endif
+
+        } else {
+            // vision not healthy
+            myLogger.putVal(log_VISION_status, -1);
+        }
+        //myLogger.putVal(log_VISION_dots, vision.getPointsCount());
+        myLogger.putVal(log_VISION_dots, pointCount);
+
+        myLogger.putVal(log_VISION_p1x_cam, vision._pointsVision[0].x);
+        myLogger.putVal(log_VISION_p1y_cam, vision._pointsVision[0].y);
+        myLogger.putVal(log_VISION_p1x_est, vision._pointsEstimated[0].x);
+        myLogger.putVal(log_VISION_p1y_est, vision._pointsEstimated[0].y);
+
+        myLogger.putVal(log_VISION_p2x_cam, vision._pointsVision[1].x);
+        myLogger.putVal(log_VISION_p2y_cam, vision._pointsVision[1].y);
+        myLogger.putVal(log_VISION_p2x_est, vision._pointsEstimated[1].x);
+        myLogger.putVal(log_VISION_p2y_est, vision._pointsEstimated[1].y);
+
+        myLogger.putVal(log_VISION_p3x_cam, vision._pointsVision[2].x);
+        myLogger.putVal(log_VISION_p3y_cam, vision._pointsVision[2].y);
+        myLogger.putVal(log_VISION_p3x_est, vision._pointsEstimated[2].x);
+        myLogger.putVal(log_VISION_p3y_est, vision._pointsEstimated[2].y);
+
+        myLogger.putVal(log_VISION_p4x_cam, vision._pointsVision[3].x);
+        myLogger.putVal(log_VISION_p4y_cam, vision._pointsVision[3].y);
+        myLogger.putVal(log_VISION_p4x_est, vision._pointsEstimated[3].x);
+        myLogger.putVal(log_VISION_p4y_est, vision._pointsEstimated[3].y);
+
+    }
+
+#  if 1
+    if (need_print && vision.healthy()){
+        printf("vision: [");
+        for (int i = 0 ; i<pointCount ; i++){
+            printf(" (%5.4f,%5.4f)", p[i].x, p[i].y);
+        }
+        printf(" ]\n");
+/*
+        static int t=0;
+        if(t++%100 == 0){
+            vision.showStatistics();
+        }
+        */
+    }
+#  endif
+#  if 0
+    if (need_print && vision.helthyPosition()){
+        printf("vision: pitch=%4.3f , roll=%4.3f , yaw=%4.3f\n"
+                , vision.getPitch(), vision.getRoll(), vision.getYaw());
+        if (natNet.healthy()){
+            printf("natnet: pitch=%4.3f , roll=%4.3f , yaw=%4.3f\n"
+                    , natNet.get_euler_pitch(), natNet.get_euler_roll(), natNet.get_euler_yaw());
+        }
+    }
+#  endif
+#endif // vision
+
+    /**************************/
+    /******* pilot RC *********/
+    /**************************/
+#define RC_STILE 0
+    // get pilot's desired throttle
+    pilot_throttle = get_pilot_desired_throttle(channel_throttle->get_control_in());  // [0.0 , 1.0]
+
+    pilot_roll = channel_roll->get_control_in(); // [-4500 , +4500] (int)
+    pilot_pitch = channel_pitch->get_control_in(); // [-4500 , +4500] (int)
+    pilot_yaw = channel_yaw->get_control_in(); // [-4500 , +4500] (int)
+
+    pilot_roll = pilot_roll / 5000.0; // [-1 , +1] (float)
+    pilot_pitch = pilot_pitch / 5000.0; // [-1 , +1] (float)
+    pilot_yaw = pilot_yaw / 5000.0; // [-1 , +1] (float)
+
+#if 0
+    if(need_print && 0){
+        printf("throttle = %8.3f, roll = %8.3f, pitch = %8.3f yaw = %8.3f\n", pilot_throttle, pilot_roll, pilot_pitch, pilot_yaw);
+        printf("location x = %8.3f, y = %8.3f z = %8.3f\n", cur_x, cur_alt, cur_z);
+    }
+#endif
+
+    /************************/
+    /***** controller *******/
+    /************************/
+
+    // high level controller
+    static float centerOfMass_x=0.0f; // 'S_x' from hanoch paper
+    static float centerOfMass_y=0.1f; // 'S_y' from hanoch paper
+    static float vertical_diff=0.0f;  // 'V_d' from hanoch paper
+    static float vertical_diff_filt=0.0f;  // 'V_d' from hanoch paper
+
+    static int lastPointCount = 0;
+#if VISION
+    if(newVisionData){
+        if (4 == pointCount){
+            lastPointCount = pointCount;
+
+            centerOfMass_x = (p[0].x + p[1].x + p[2].x + p[3].x ) / 4.0f;
+
+            centerOfMass_y = (p[0].y + p[1].y + p[2].y + p[3].y ) / 4.0f;
+
+
+            float temp_Vd =  -(p[0].y - p[3].y - (p[1].y - p[2].y)) /
+                    (p[0].y - p[3].y + (p[1].y - p[2].y));
+            if (abs(temp_Vd - vertical_diff_filt) > 0.1f){
+                temp_Vd = vertical_diff_filt;
+            }
+            vertical_diff = temp_Vd;
+
+            myLogger.putVal(log_VISION_Vd, vertical_diff);
+            vertical_diff_filt = vertical_diff_filt*0.95f + vertical_diff * 0.05f;
+
+
+
+        } else if (3 == pointCount){
+            // keep last values
+        } else if (2 == pointCount && 2 <= lastPointCount){
+            lastPointCount = pointCount;
+            if(centerOfMass_y < -0.4 &&  // if was low
+                    p[0].y < 0 && p[1].y < 0){
+                // too low
+                centerOfMass_y = -0.8f;
+
+            } else if(centerOfMass_y > +0.4 && // if was high
+                    p[0].y > 0 && p[1].y > 0){
+                // too high
+                centerOfMass_y = +0.8f;
+            }
+
+            if(centerOfMass_x < -0.4 &&  // if was right
+                    p[0].x < 0 && p[1].x < 0){
+                // too right
+                centerOfMass_x = -0.8f;
+
+            } else if(centerOfMass_x > +0.4 && // if was left
+                    p[0].x > 0 && p[1].x > 0){
+                // too left
+                centerOfMass_x = +0.8f;
+            }
+        } else {
+            if(2 > pointCount && 2 > lastPointCount){
+                centerOfMass_x = 0.0;
+                centerOfMass_y = 0.0;
+            }
+            lastPointCount = 0;
+        }
+    } // newVisionData
+    myLogger.putVal(log_VISION_Sx, centerOfMass_x);
+    myLogger.putVal(log_VISION_Sy, centerOfMass_y);
+    myLogger.putVal(log_VISION_Vd_filt, vertical_diff_filt);
+
+#endif
+
+// low level controller
+#define KP_P 0.10f
+#define KP_Q 0.12f
+//#define KP_R 0.8f
+#define KP_R 1.2f
+#if NATNET
+    static float last_alt, vertical_vel_filt;
+    #if NATNET_POS_HOLD
+        static float last_x, x_vel_filt;
+        static float last_z, z_vel_filt;
+    #endif
+#endif
+
+    static uint32_t last_time_vision_us;
+    float delta_time_vision_sec = 0;
+    if (newVisionData){
+        if (now_us < last_time_vision_us){ // handle 32bit overflow (every 1:10 Hours)
+            last_time_vision_us = 0xFFFF - last_time_vision_us;
+            delta_time_vision_sec = (float)(now_us + last_time_vision_us) / 1000.0f/1000.0f; // uS -> sec
+        } else {
+            delta_time_vision_sec = (float)(now_us - last_time_vision_us) / 1000.0f/1000.0f; // uS -> sec
+        }
+        last_time_vision_us = now_us;
+        if (delta_time_vision_sec == 0){
+            printf("zero!\n");
+            delta_time_vision_sec = 0.0000005f;
+        }
+    }
+
+    static uint32_t last_time_us;
+    float delta_time_sec;
+
+    if (now_us < last_time_us){ // handle 32bit overflow (every 1:10 Hours)
+        last_time_us = 0xFFFF - last_time_us;
+        delta_time_sec = (float)(now_us + last_time_us) / 1000.0f/1000.0f; // uS -> sec
+    } else {
+        delta_time_sec = (float)(now_us - last_time_us) / 1000.0f/1000.0f; // uS -> sec
+    }
+    last_time_us = now_us;
+    if (delta_time_sec == 0){
+        printf("zero!\n");
+        delta_time_sec = 0.0000005f;
+    }
+
+
+    /* roll */
+    /********/
+    float pilot_roll_scaled = pilot_roll; // * 1.1f;        // scale RC input
+
+
+    #if NATNET && NATNET_POS_HOLD
+        #define KP_X 0.25f
+        #define KD_X 0.12f
+
+        #if VISION && VISION_CONTROL
+            cur_x = vertical_diff_filt * 20.0f; // Override optitrack
+
+            if (newVisionData) {
+                float x_vel;
+                if (4 == pointCount){       // if good data
+                    float delta_x = cur_x - last_x;
+                    x_vel = delta_x / delta_time_vision_sec;
+                } else {
+                    x_vel = 0.0f;
+                }
+
+                x_vel_filt = x_vel_filt*0.9f + x_vel*0.1f;
+                //x_vel_filt = x_vel_filt*0.98f + x_vel*0.02f;
+                last_x = cur_x;
+                myLogger.putVal(log_vel_x, x_vel);
+                //printf("delta_time_vision_sec = %f, x_vel= %f, last_x= %f\n", delta_time_vision_sec, cur_x, last_x);
+            }
+        #else
+            float delta_x = cur_x - last_x;
+            float x_vel = delta_x / delta_time_sec;
+            last_x = cur_x;
+            x_vel_filt = x_vel_filt*0.9f + x_vel*0.1f;
+        #endif
+
+        myLogger.putVal(log_vel_x_filt, x_vel_filt);
+
+        pilot_roll_scaled += -KP_X*cur_x -KD_X*x_vel_filt*2.0f;
+    #endif
+
+    float error_angle_roll = (pilot_roll_scaled - 2*roll_angle)*3.0f;
+    float error_vel_roll = error_angle_roll - insGyro.x;
+    float roll_cmd = error_vel_roll * KP_P;               // the output!
+    roll_cmd = constrain_float(roll_cmd, -1.0f, +1.0f);
+
+
+
+    /* pitch */
+    /*********/
+    float pilot_pitch_scaled = pilot_pitch; // * 0.93f;        // scale RC input
+
+    #if NATNET && NATNET_POS_HOLD
+        #define KP_Z 0.25f
+        #define KD_Z 0.12f
+
+        float delta_Z = cur_z - last_z;
+        float z_vel = delta_Z / delta_time_sec;
+        last_z = cur_z;
+        z_vel_filt = z_vel_filt*0.9f + z_vel*0.1f;
+
+        pilot_pitch_scaled += -KP_Z*cur_z -KD_Z*z_vel_filt;
+    #endif
+
+    float error_angle_pitch = (pilot_pitch_scaled - 2*pitch_angle)*3.0f;
+    float error_vel_pitch = error_angle_pitch - insGyro.y;
+    float pitch_cmd = error_vel_pitch * KP_Q;               // the output!
+    pitch_cmd = constrain_float(pitch_cmd, -1.0f, +1.0f);
+
+
+
+    /* yaw */
+    /*******/
+    float pilot_yaw_scaled = pilot_yaw * 1.6f;           // scale RC input
+
+    #if VISION && VISION_CONTROL
+        if (vision.healthy() && 4 == pointCount){
+            yaw_angle = centerOfMass_x;
+        } else {
+            yaw_angle = centerOfMass_x;
+        }
+    #endif
+
+    float yaw_scaled = yaw_angle * 1.6f;
+    float error_vel_yaw = pilot_yaw_scaled + yaw_scaled - insGyro.z;
+    float yaw_cmd  = error_vel_yaw * KP_R;               // the output!
+    yaw_cmd = constrain_float(yaw_cmd, -1.0f, +1.0f);
+
+    /* throttle */
+    static float throtle_cmd = 0;
+    #if NATNET
+        if (natNet.initialized()) {
+            float delta_alt = cur_alt - last_alt;
+            float vertical_vel = delta_alt / delta_time_sec;
+            last_alt = cur_alt;
+            vertical_vel_filt = vertical_vel_filt*0.9f + vertical_vel*0.1f;
+
+            float pilot_throtle_scaled = pilot_throttle*1.8;
+            float error_throtle = (pilot_throtle_scaled - cur_alt)*0.2f;
+            float hover_throtle = 0.3f; // full battery: 0.3;
+
+            // Safety first - constrain_float() convert 'nan' to 0.5
+            throtle_cmd = (hover_throtle + error_throtle - vertical_vel_filt*0.1f);
+            if(isnan(throtle_cmd)){
+                throtle_cmd = 0;
+            } else {
+                throtle_cmd = constrain_float( throtle_cmd , 0.0f, +1.0f);
+            }
+        } else {
+            throtle_cmd = pilot_throttle;
+        }
+    #else
+        throtle_cmd = pilot_throttle;
+    #endif
+
+
+        myLogger.putVal(log_cmd_pitch, pitch_cmd);
+        myLogger.putVal(log_cmd_roll, roll_cmd);
+        myLogger.putVal(log_cmd_yaw, yaw_cmd);
+        myLogger.putVal(log_cmd_throtle, throtle_cmd);
+
+    /*******************/
+    /**** failsafe *****/
+    /*******************/
+#define MAX_ANGLE_ALLOW 0.8
+    if ((roll_angle < -MAX_ANGLE_ALLOW || roll_angle > MAX_ANGLE_ALLOW) ||
+            (pitch_angle < -MAX_ANGLE_ALLOW || pitch_angle > MAX_ANGLE_ALLOW)){
+        motors.armed(false);
+        motors.output();
+    }
+
+    /*********************/
+    /***** arm check *****/
+    /*********************/
+
+    // if not armed set throttle to zero and exit immediately
+    if (!motors.armed() || ap.throttle_zero || !motors.get_interlock()) {
+        motors.set_desired_spool_state(AP_Motors::DESIRED_SPIN_WHEN_ARMED);
+        //motors.set_desired_spool_state(AP_Motors::DESIRED_SHUT_DOWN);
+        //attitude_control.set_throttle_out_unstabilized(0,true,g.throttle_filt);
+
+        motors.set_roll(0.0);
+        motors.set_pitch(0.0);
+        motors.set_yaw(0.0);
+        motors.set_throttle(0.0);
+
+        angle_yaw_initial_rad = yaw_angle;
+
+        return;
+    }
+
+    // clear landing flag
+    set_land_complete(false);
+
+
+    /*************************/
+    /***** motors output *****/
+    /*************************/
+
+    motors.set_desired_spool_state(AP_Motors::DESIRED_THROTTLE_UNLIMITED);
+
+    motors.set_throttle(throtle_cmd);
+    //motors.set_throttle(pilot_throttle);
+    motors.set_roll(roll_cmd);
+    motors.set_pitch(pitch_cmd);
+    motors.set_yaw(yaw_cmd);
+
+#if 0
+    if (need_print){
+        printf("pilot_throttle = %8.3f, alt_filt=%8.3f, alt_healthy=%d\n",
+                pilot_throttle,
+                cur_alt,
+                rangefinder_state.alt_healthy);
+    }
+#endif
+}
+
+#if 0
+#define KP_P 0.12f
+#define KP_Q 0.14f
+#define KP_R 0.33f
+
+    /* PID controller */
+    float pilot_scaled;
+    float error;
+    float PTerm;
+
+    // roll
+    pilot_scaled = pilot_roll/3.0/KP_P;  // scale RC input
+    error = pilot_scaled - insGyro.x;
+    PTerm = error * KP_P;
+    float roll_cmd = constrain_float(PTerm, -1.0f, +1.0f);
+
+    // pitch
+    pilot_scaled = pilot_pitch/3.0/KP_Q;  // scale RC input
+    error = pilot_scaled - insGyro.y;
+    PTerm = error * KP_Q;
+    float pitch_cmd = constrain_float(PTerm, -1.0f, +1.0f);
+
+    //yaw
+    pilot_scaled = pilot_yaw/3/KP_R;  // scale RC input
+    error = pilot_scaled - insGyro.z;
+    PTerm = error * KP_R;
+    float yaw_cmd = constrain_float(PTerm, -1.0f, +1.0f);
+#endif
+
+#if 0
+    uint32_t optFlow_interval_ms = 100; // apply opticflow at 10Hz
+
     if (opticalFlowPi.last_update() + optFlow_interval_ms < now){
         opticalFlowPi.update();
     }
@@ -98,88 +720,6 @@ void Copter::acro_run()
         printf("%4d ; %6.2f ; %6.2f ;", opticalFlowPi.quality(1), opticalFlowPi.getVel(1).x, opticalFlowPi.getVel(1).y);
         printf("%8.2f ; %8.2f\n",sumX[1], sumY[1]);
     }
-#endif
-
-    static float cur_alt = 0.0f;
-
-#define NATNET 1
-#if NATNET
-
-    natNet.update();
-    if (natNet.healthy()){
-        cur_alt = natNet.getLocation().y;
-        //roll_angle =  natNet.get_euler_roll();
-        //pitch_angle = natNet.get_euler_pitch();
-        //yaw_angle =   natNet.get_euler_yaw();
-    }
-#else
-    //cur_alt = (rangefinder_state.alt_cm_filt.get()/100.0) - 0.3;
-    cur_alt = (rangefinder.distance_cm()/100.0f) - 0.3f;
-    //cur_alt = cur_alt*0.5f + (((float)rangefinder_state.alt_cm/100.0f) - 0.3f)*0.5f;
-#endif
-
-    // x->roll axis (acc:back gyro:rigth)
-    // y->pich axis (acc:left gyro:back)
-    // z->yaw axis (acc:up gyro:rigth)
-    const Vector3f insAccel = ins.get_accel(); // vector of current accelerations in m/s/s
-    const Vector3f insGyro = ins.get_gyro();   // vector of rotational rates in radians/sec
-
-    const Vector3f compass_field = compass.get_field(); // current field as a Vector3f in milligauss
-    const float angle_yaw_rad = atan2f(compass_field.y, compass_field.x);
-
-    /* from atitude_control code */
-    /*****************************/
-    Quaternion attitude_vehicle_quat;
-
-    attitude_vehicle_quat.from_rotation_matrix(ahrs.get_rotation_body_to_ned());
-    float roll_angle =  attitude_vehicle_quat.get_euler_roll();
-    float pitch_angle = attitude_vehicle_quat.get_euler_pitch();
-    float yaw_angle =   attitude_vehicle_quat.get_euler_yaw();
-
-#if 1
-    if (need_print){
-        printf("cur_alt %6.3f\n", cur_alt);
-        //printf("axis_angles_norm = [%6.3f , %6.3f, %6.3f]\n", roll_angle, pitch_angle, yaw_angle);
-    }
-    // just for ignoring compilation errors
-    if (need_print & 0){
-        printf("insAccel = [%6.3f , %6.3f , %6.3f]  insGyro = [%6.3f , %6.3f , %6.3f]\n", insAccel.x, insAccel.y, insAccel.z, insGyro.x, insGyro.y, insGyro.z);
-        printf("compass_field = [%6.3f , %6.3f , %6.3f] angle_to_north = %6.3f\n", compass_field.x, compass_field.y, compass_field.z, angle_yaw_rad);
-        printf("attitude_vehicle_quat = [%6.3f , %6.3f , %6.3f, %6.3f]\n", attitude_vehicle_quat.q1, attitude_vehicle_quat.q2, attitude_vehicle_quat.q3, attitude_vehicle_quat.q4);
-    }
-#endif
-
-
-#define SONAR_ALT 1
-#define RC_STILE 0
-
-#if RC_STILE == 0 // direct
-    // get pilot's desired throttle
-    pilot_throttle = get_pilot_desired_throttle(channel_throttle->get_control_in());  // [0.0 , 1.0]
-    //pilot_throttle_scaled = channel_throttle->get_control_in(); // [0 , 2000] (int)
-
-    pilot_roll = channel_roll->get_control_in(); // [-4500 , +4500] (int)
-    pilot_pitch = channel_pitch->get_control_in(); // [-4500 , +4500] (int)
-    pilot_yaw = channel_yaw->get_control_in(); // [-4500 , +4500] (int)
-
-    pilot_roll = pilot_roll / 5000.0; // [-1 , +1] (float)
-    pilot_pitch = pilot_pitch / 5000.0; // [-1 , +1] (float)
-    pilot_yaw = pilot_yaw / 5000.0; // [-1 , +1] (float)
-
-    if(need_print & 0){
-        printf("throttle = %8.3f, roll = %8.3f, pitch = %8.3f yaw = %8.3f\n", pilot_throttle, pilot_roll, pilot_pitch, pilot_yaw);
-    }
-
-#elif RC_STILE == 1 // acro
-    pilot_throttle_scaled = get_pilot_desired_throttle(channel_throttle->get_control_in());  //TODO [0.0 , 1.0]
-    // convert the input to the desired body frame rate
-    get_pilot_desired_angle_rates(channel_roll->get_control_in(), channel_pitch->get_control_in(), channel_yaw->get_control_in(), pilot_roll, pilot_pitch, pilot_yaw);
-#elif RC_STILE == 2 // stabilize
-    get_pilot_desired_lean_angles(channel_roll->get_control_in(), channel_pitch->get_control_in(), pilot_roll, pilot_pitch, aparm.angle_max);
-    pilot_throttle_scaled = get_pilot_desired_throttle(channel_throttle->get_control_in());  //TODO [0.0 , 1.0]
-
-    // get pilot's desired yaw rate
-    pilot_yaw = get_pilot_desired_yaw_rate(channel_yaw->get_control_in());
 #endif
 
 #if 0
@@ -211,143 +751,4 @@ void Copter::acro_run()
                     delta_speed_morm);
         }
     }
-#endif
-
-    /************************/
-    /***** controller *******/
-    /************************/
-
-#define KP_P 0.10f
-#define KP_Q 0.12f
-#define KP_R 0.5f
-
-    static float last_alt, vertical_vel_filt;
-    static uint32_t last_alt_time_ms;
-
-    float pilot_scaled;
-    float error;
-    float PTerm;
-    float error_phi;
-
-    /* roll */
-    pilot_scaled = pilot_roll/9.0/KP_P;  // scale RC input
-    error_phi = (pilot_scaled - roll_angle)*3.0f;
-    error = error_phi - insGyro.x;
-    PTerm = error * KP_P;
-    float roll_cmd = constrain_float(PTerm, -1.0f, +1.0f);
-
-    /* pitch */
-    pilot_scaled = pilot_pitch/9.0/KP_Q;  // scale RC input
-    error_phi = (pilot_scaled - pitch_angle)*3.0f;
-    error = error_phi - insGyro.y;
-    PTerm = error * KP_Q;
-    float pitch_cmd = constrain_float(PTerm, -1.0f, +1.0f);
-
-    /* yaw */
-    pilot_scaled = pilot_yaw/3/KP_R;  // scale RC input
-    error = pilot_scaled - insGyro.z;
-    PTerm = error * KP_R;
-    float yaw_cmd = constrain_float(PTerm, -1.0f, +1.0f);
-
-    pilot_scaled = pilot_yaw/1.0;  // scale RC input
-    //error = pilot_scaled - insGyro.z;
-    error = get_yaw_error(yaw_angle, (pilot_scaled != 0)) + pilot_scaled;
-    PTerm = error * KP_R;
-    yaw_cmd = constrain_float(yaw_cmd + PTerm, -1.0f, +1.0f);
-
-    /* throttle */
-    float delta_time = (float)(now - last_alt_time_ms) / 1000.0f;
-    float delta_alt = cur_alt - last_alt;
-    float vertical_vel = delta_alt / delta_time;
-    last_alt_time_ms = now;
-    last_alt = cur_alt;
-
-    vertical_vel_filt = vertical_vel_filt*0.9f + vertical_vel*0.1f;
-
-    pilot_scaled = pilot_throttle*1.5;
-    error = (pilot_scaled - cur_alt)*0.2f;
-    float throtle_cmd = constrain_float( (0.3 + error - vertical_vel_filt*0.1f) , -1.0f, +1.0f);
-
-    if(need_print){
-        printf("vertical_vel_filt = %8.3ff\n", vertical_vel_filt);
-    }
-
-
-    /* failsafe */
-#define MAX_ANGLE_ALLOW 0.8
-    if ((roll_angle < -MAX_ANGLE_ALLOW || roll_angle > MAX_ANGLE_ALLOW) ||
-            (pitch_angle < -MAX_ANGLE_ALLOW || pitch_angle > MAX_ANGLE_ALLOW)){
-        motors.armed(false);
-        motors.output();
-    }
-
-    /* arm check */
-    /*************/
-    // if not armed set throttle to zero and exit immediately
-    if (!motors.armed() || ap.throttle_zero || !motors.get_interlock()) {
-        motors.set_desired_spool_state(AP_Motors::DESIRED_SPIN_WHEN_ARMED);
-        //motors.set_desired_spool_state(AP_Motors::DESIRED_SHUT_DOWN);
-        //attitude_control.set_throttle_out_unstabilized(0,true,g.throttle_filt);
-
-        motors.set_roll(0.0);
-        motors.set_pitch(0.0);
-        motors.set_yaw(0.0);
-        motors.set_throttle(0.0);
-
-        alt_I = 0;
-        angle_yaw_initial_rad = yaw_angle;
-
-        return;
-    }
-
-    // clear landing flag
-    set_land_complete(false);
-
-
-    /*************************/
-    /***** motors output *****/
-    /*************************/
-    motors.set_desired_spool_state(AP_Motors::DESIRED_THROTTLE_UNLIMITED);
-
-    motors.set_throttle(throtle_cmd);
-    //motors.set_throttle(pilot_throttle);
-    motors.set_roll(roll_cmd);
-    motors.set_pitch(pitch_cmd);
-    motors.set_yaw(yaw_cmd);
-
-    if (need_print){
-        printf("pilot_throttle = %8.3f, alt_filt=%8.3f, alt_healthy=%d\n",
-                pilot_throttle,
-                cur_alt,
-                rangefinder_state.alt_healthy);
-    }
-}
-
-#if 0
-#define KP_P 0.12f
-#define KP_Q 0.14f
-#define KP_R 0.33f
-
-    /* PID controller */
-    float pilot_scaled;
-    float error;
-    float PTerm;
-
-    // roll
-    pilot_scaled = pilot_roll/3.0/KP_P;  // scale RC input
-    error = pilot_scaled - insGyro.x;
-    PTerm = error * KP_P;
-    float roll_cmd = constrain_float(PTerm, -1.0f, +1.0f);
-
-    // pitch
-    pilot_scaled = pilot_pitch/3.0/KP_Q;  // scale RC input
-    error = pilot_scaled - insGyro.y;
-    PTerm = error * KP_Q;
-    float pitch_cmd = constrain_float(PTerm, -1.0f, +1.0f);
-
-    //yaw
-    pilot_scaled = pilot_yaw/3/KP_R;  // scale RC input
-    error = pilot_scaled - insGyro.z;
-    PTerm = error * KP_R;
-    float yaw_cmd = constrain_float(PTerm, -1.0f, +1.0f);
 #endif
