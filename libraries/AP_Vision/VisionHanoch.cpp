@@ -43,7 +43,7 @@ bool VisionHanoch::estimatePosition(){
         return false;
     }
 
-    reorderPoints(_pointsVision);
+    reorderPoints(_pointsVision, 4);
     //memcpy(&_pointsVision, &points, sizeof(points));
 
     // now estimate the position
@@ -87,8 +87,8 @@ bool VisionHanoch::update(void){
     if (Vision::update()){
         _updatedPos = false;
 
-        getBestPoints(_pointsVision, 4, true);
-        reorderPoints(_pointsVision);
+        int count = getBestPoints(_pointsVision, 4, true);
+        reorderPoints(_pointsVision, count);
 
         return true;
     } else {
@@ -97,14 +97,18 @@ bool VisionHanoch::update(void){
 }
 
 
-void VisionHanoch::reorderPoints(struct ip_point* points){
+void VisionHanoch::reorderPoints(struct ip_point* points, int pointsCount){
     /*
      * Y axis direction corection:
      * vision -> positive is down
      * hanoch algo -> positive is up
      */
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < pointsCount; ++i) {
         points[i].y = -points[i].y;
+    }
+
+    if (pointsCount < 4){
+        return;
     }
 
     if (points[0].x > points[1].x){

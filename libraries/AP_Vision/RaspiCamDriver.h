@@ -44,14 +44,14 @@ public:
     bool retrive(unsigned char* dest, bool chackForNewFrame = true);
 #endif
 
-    void setResolution(int height, int width);
+    bool setResolution(int height, int width);
     size_t getFrameSize();
 
 private:
 
     bool prepareInVid(raspicam::RaspiCam_Cv* Camera);
 
-    static void userCallback();
+    static void userCallback(void* arg);
 
 };
 

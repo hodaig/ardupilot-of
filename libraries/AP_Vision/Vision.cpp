@@ -4,6 +4,11 @@
 
 using namespace std;
 
+static uint32_t iterationStart_us;
+static int computationStatus; // 0 -> done, 1 -> only retrieve done, 2-> middle of findDots
+
+#define MICROS() AP_HAL::micros()
+
 struct vision_stat_t{
     bool initialized = false;
 
@@ -34,14 +39,22 @@ void STAT_INIT(struct vision_stat_t& stat, char* name){
         stat.name = name;
 }
 
+void STAT_ZERO(struct vision_stat_t& stat){
+        stat.initialized = true;
+        stat.iterations = 0;
+        stat.max_us = 0;
+        stat.total_us = 0;
+        stat.avg = 0;
+}
+
 void STATS_START(struct vision_stat_t& stat){
     if (!stat.initialized){
         STAT_INIT(stat, "noName");
     }
-    stat.begin = AP_HAL::micros();
+    stat.begin = MICROS();
 }
 void STATS_END(struct vision_stat_t& stat){
-    int dif = AP_HAL::micros() - stat.begin;
+    int dif = MICROS() - stat.begin;
     if(dif < 0){
         return;
     }
@@ -58,11 +71,11 @@ void STATS_END(struct vision_stat_t& stat){
 
 
 /* statistics */
-static vision_stat_t retrive_stat, total_stat, optic_stat;
+static vision_stat_t retrive_stat, stat_update_iter, optic_stat;
 
 // constructor
 Vision::Vision() : _last_update_ms(0), _height(0), _width(0){
-
+    computationStatus = 0;
 }
 
 void Vision::init(int height, int width) {
@@ -79,7 +92,7 @@ void Vision::init(int height, int width) {
 
     /* statistics */
     STAT_INIT(retrive_stat, "retrive_stat");
-    STAT_INIT(total_stat, "total_stat");
+    STAT_INIT(stat_update_iter, "update iter stat");
     STAT_INIT(optic_stat, "optic_stat");
 }
 
@@ -93,23 +106,54 @@ void Vision::setResolution(int height, int width){
 }
 #endif
 
+/*
+ * factor of 240X320
+ */
+bool Vision::setResolution(int height, int width){
+    if ((height % 240 != 0) || (width % 320 != 0) ){
+        return false;
+    }
+    if (height == _height || width == _width){
+        return true;
+    }
+
+    _height = height;
+    _width = width;
+
+    if (_camDriv.setResolution(height, width)){
+        _flags.cameraError = false;
+        return true;
+    } else {
+        _flags.cameraError = true;
+        return false;
+    }
+}
+
 bool Vision::update() {
     bool ans;
-    static bool working = false;
+    //static bool working = false;
 
-    STATS_START(total_stat);
+    STATS_START(stat_update_iter);
+    iterationStart_us = MICROS();
 
-    if(working){
-        return false;
+    //if(working){
+    //    return false;
+    //}
+    //working = true;
+    if (0 == computationStatus){
+        STATS_START(retrive_stat);
+        if (!(ans = _camDriv.retrive(_mat, true))) {
+            //working = false;
+            return false;
+        }
+        STATS_END(retrive_stat);
+        computationStatus = 1;
+        if ( (MICROS() - iterationStart_us) > 2000){
+            // too much time, lets wait to next iteration
+            STATS_END(stat_update_iter);
+            return false;
+        }
     }
-    working = true;
-
-    STATS_START(retrive_stat);
-    if (!(ans = _camDriv.retrive(_mat, true))) {
-        working = false;
-        return false;
-    }
-    STATS_END(retrive_stat);
 
     // have new frame
 #if 0
@@ -122,11 +166,22 @@ bool Vision::update() {
     printf("\n");
 #endif
 
+    if (1 == computationStatus){
+        // prepare
+        _data.points.clear();
+        _data.nPoints=0;
+        _data.height= _mat.rows;
+    }
+
     STATS_START(optic_stat);
-    _data.points.clear();
-    _data.nPoints=0;
     findDots(_mat, _data);
     STATS_END(optic_stat);
+
+    if (0 != computationStatus){
+        // findDots didn't finish
+        STATS_END(stat_update_iter);
+        return false;
+    }
 
     _last_update_ms = AP_HAL::millis();
     //if (_data.nPoints <= 0 || _data.nPoints > 6) {
@@ -136,9 +191,9 @@ bool Vision::update() {
         _flags.healthy = false;
     }
 
-    STATS_END(total_stat);
+    STATS_END(stat_update_iter);
 
-    working = false;
+    //working = false;
     return true;
 }
 
@@ -156,12 +211,16 @@ int Vision::getBestPoints(struct ip_point* points, int count, bool regulate){
         }
     }
 
+    if (_data.height < 240){
+        _data.height = 240;
+    }
+
     for (int i=0 ; i<_data.nPoints && foundCount < count ; i++) {
         if (_data.points[i].mass <= (minMass*2) ){
             points[foundCount] = _data.points[i];
             if(regulate){
-                points[foundCount].x = ( points[foundCount].x / (float)(_width/2)) - 1.0f;
-                points[foundCount].y = ( points[foundCount].y / (float)(_height/2)) - 1.0f;
+                points[foundCount].x = ( points[foundCount].x / (float)(_data.height/2)) - 1.0f;
+                points[foundCount].y = ( points[foundCount].y / (float)(_data.height/2)) - 1.0f;
             }
             foundCount++;
         }
@@ -175,7 +234,13 @@ int Vision::getBestPoints(struct ip_point* points, int count, bool regulate){
 void Vision::showStatistics(){
     STATS_SHOW(retrive_stat);
     STATS_SHOW(optic_stat);
-    STATS_SHOW(total_stat);
+    STATS_SHOW(stat_update_iter);
+}
+
+void Vision::initStatistics(){
+    STAT_ZERO(retrive_stat);
+    STAT_ZERO(optic_stat);
+    STAT_ZERO(stat_update_iter);
 }
 
 
@@ -243,11 +308,11 @@ void Vision::findDots(cv::Mat& mat, struct ip_data& ipData){
     trashold = (avgPixel + maxPixel*3) / 4;
     //printf("optic pixel avg=%d, max=%d, trash=%d\n", avgPixel, maxPixel, trashold);
 #else
-    trashold = 0xF8;
+    trashold = 0xF0;
 #endif
 
-    int minDotMass = pow(_height , 2) / 7680; // 120; // TODO in 960p minimum is 150
-    int maxDotMass = pow(_height , 2) / 800;  // 1000-1300; // TODO need to check
+    int minDotMass = pow(mat.rows , 2) / 7680; // 120; // TODO in 960p minimum is 150
+    int maxDotMass = pow(mat.rows , 2) / 800;  // 1000-1300; // TODO need to check
     //int minDotMass = 30; // TODO in 960p minimum is 150
     //int maxDotMass = 2000;  // 1000; // TODO need to check
 
@@ -263,9 +328,21 @@ void Vision::findDots(cv::Mat& mat, struct ip_data& ipData){
     }
 #endif
 
+    static int y;
+
+    if (1 == computationStatus){
+        // starting with new image
+        y = 0;
+    }
+    computationStatus = 2;
+
     int cols = mat.cols;
-    for(int y =0 ; y<mat.rows ; y+=1){
-        for (int x = 0; x<mat.cols ; x+=1){
+    for( ; y<mat.rows ; y+=1){
+        if ((0 == y%1) && (MICROS() - iterationStart_us) > 2000 ){
+            // too much time, wait for next iteration
+            return;
+        }
+        for (int x=0; x<mat.cols ; x+=1){
             //if (mat.at<uchar>(y,x) > trashold){
             if (data[y*cols+x] >= trashold){
                 dfs_x_sum = 0;
@@ -290,5 +367,7 @@ void Vision::findDots(cv::Mat& mat, struct ip_data& ipData){
             }
         }
     }
+
+    computationStatus = 0; // computation done
 
 }

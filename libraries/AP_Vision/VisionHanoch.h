@@ -52,7 +52,7 @@ public:
     float getLocY();
     float getLocZ();
 
-    void reorderPoints(struct ip_point* points);
+    void reorderPoints(struct ip_point* points, int pointsCount);
 
 private:
 

@@ -37,8 +37,8 @@ struct of_stat_t{
 
     char* name;
     uint32_t iterations;
-    uint32_t total_ms;
-    uint32_t max_ms;
+    uint32_t total_us;
+    uint32_t max_us;
     uint32_t avg;
 
     /* temp */

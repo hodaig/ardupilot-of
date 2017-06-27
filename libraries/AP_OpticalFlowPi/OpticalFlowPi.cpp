@@ -16,14 +16,14 @@ extern const AP_HAL::HAL& hal;
 using namespace std;
 
 void STATS_SHOW(struct of_stat_t& stat){
-    printf("*** stat - %s: avg=%d, max=%d\n", stat.name, stat.avg, stat.max_ms);
+    printf("*** stat - %s: avg=%d, max=%d\n", stat.name, stat.avg, stat.max_us);
 }
 
 void STAT_INIT(struct of_stat_t& stat, char* name){
         stat.initialized = true;
         stat.iterations = 0;
-        stat.max_ms = 0;
-        stat.total_ms = 0;
+        stat.max_us = 0;
+        stat.total_us = 0;
         stat.avg = 0;
         stat.name = name;
 }
@@ -41,10 +41,10 @@ void STATS_END(struct of_stat_t& stat){
     }
     if (stat.begin != 0){
         stat.iterations++;
-        stat.total_ms += (uint32_t)dif;
-        stat.avg = stat.total_ms / stat.iterations;
-        if (stat.max_ms < (uint32_t)dif){
-            stat.max_ms = (uint32_t)dif;
+        stat.total_us += (uint32_t)dif;
+        stat.avg = stat.total_us / stat.iterations;
+        if (stat.max_us < (uint32_t)dif){
+            stat.max_us = (uint32_t)dif;
         }
     }
     stat.begin = 0;

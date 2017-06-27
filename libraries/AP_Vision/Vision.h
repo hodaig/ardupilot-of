@@ -35,6 +35,7 @@ struct ip_point{
 struct ip_data{
     std::vector<struct ip_point> points;
     int nPoints; // number of points found
+    int height;
 };
 
 class Vision
@@ -63,7 +64,7 @@ public:
     // init - initialise sensor (factor of 240X320)
     // 480 640
     // 960 1280
-    void init(int height=480, int width=640);
+    void init(int height=960, int width=1280);
 #if 0
     // make runtime errors
     void setResolution(int height, int width);
@@ -73,6 +74,11 @@ public:
 
     /* return true if new data arrived */
     virtual bool update(void);
+
+    bool setResolution(int height, int width);
+    int getHeight() const { return _height; };
+    int getWidth() const { return _width; };
+    int getDynamicHeight() const { return _data.height; };
 
     // quality - returns the surface quality as a measure from 0 ~ 255
     //uint16_t quality(uint camSelector) const { return _optFlowData[camSelector%2].quality; }
@@ -88,6 +94,7 @@ public:
     int getPointsCount() { return _data.nPoints; }
 
     void showStatistics();
+    void initStatistics();
 
     // for testing
     cv::Mat* getImage() { return &_mat; }

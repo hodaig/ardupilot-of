@@ -18,7 +18,11 @@
 
 using namespace raspicam;
 
-static RaspiCamDriver* _this = 0;
+//static RaspiCamDriver* _this = 0;
+
+static bool resChanged = false;
+static int res_h = 0;
+static int res_w = 0;
 
 RaspiCamDriver::RaspiCamDriver() :
 #ifdef RPI_CV
@@ -31,7 +35,7 @@ RaspiCamDriver::RaspiCamDriver() :
                     _isCapturing(false),
                     _hasNewFrame(false),
                     _frameIsUsed(false){
-    _this = this;
+    //_this = this;
 }
 
 RaspiCamDriver::~RaspiCamDriver() {
@@ -111,7 +115,7 @@ bool RaspiCamDriver::startCapture(int fps, int h, int w){
     }
 
     _hasNewFrame = false;
-    _cam->setUserCallback(userCallback);
+    _cam->setUserCallback(userCallback, this);
 
     //wait a while until camera stabilizes
     //cout<<"Sleeping for 3 secs"<<endl;
@@ -122,11 +126,11 @@ bool RaspiCamDriver::startCapture(int fps, int h, int w){
     return true;
 }
 #ifdef RPI_CV
-bool RaspiCamDriver::retrive(cv::Mat& dest ,bool chackForNewFrame){
+bool RaspiCamDriver::retrive(cv::Mat& dest ,bool checkForNewFrame){
 #else
 bool RaspiCamDriver::retrive(unsigned char* dest ,bool chackForNewFrame){
 #endif
-    if ( chackForNewFrame && !_hasNewFrame){
+    if ( checkForNewFrame && !_hasNewFrame){
         return false;
     }
     if (_frameIsUsed) {
@@ -150,8 +154,10 @@ bool RaspiCamDriver::retrive(unsigned char* dest ,bool chackForNewFrame){
 }
 
 static volatile bool inCallback = false;
-void RaspiCamDriver::userCallback() {
+void RaspiCamDriver::userCallback(void* arg) {
     inCallback = true;
+
+    RaspiCamDriver* _this = (RaspiCamDriver*)arg;
 
     if (!_this || !_this->_isCapturing ){
         inCallback = false;
@@ -177,29 +183,56 @@ void RaspiCamDriver::userCallback() {
     _this->_hasNewFrame = true;
     _this->_frameIsUsed = false;
     inCallback = false;
+/*
+    if (resChanged){
+        resChanged = false;
+        //printf("changing res to %d %d\n", res_h, res_w);
+        _this->_cam->set( CV_CAP_PROP_FRAME_HEIGHT, res_h ); // 240 480
+        _this->_cam->set( CV_CAP_PROP_FRAME_WIDTH, res_w );  // 320 640
+        //printf("done changing\n");
+    }
+    */
 }
 
-void RaspiCamDriver::setResolution(int height, int width){
+bool RaspiCamDriver::setResolution(int height, int width){
     printf("RaspiCamDriver::setResolution start\n");
 
+    res_h = height;
+    res_w = width;
+    resChanged = true;
+
+    _cam->setUserCallback(NULL, NULL);
     // TODO - bad mutex
     bool isCapturing = _isCapturing;
     _isCapturing = false;
+    usleep(10);
     while (inCallback){
         // Wait
         usleep(10);
     }
 
+    _cam->release();
+
+    printf("size was %d\n", _frame.rows);
     _cam->set( CV_CAP_PROP_FRAME_HEIGHT, height ); // 240 480
     _cam->set( CV_CAP_PROP_FRAME_WIDTH, width );  // 320 640
+
 
     if (!_cam->open()) {
         printf("RaspiCamDriver - Error opening the camera\n");
         return false;
     }
+/*
+    if (!_cam->startCapture()) {
+        printf("RaspiCamDriver - Error opening the camera\n");
+        return false;
+    }
+    */
     _isCapturing = isCapturing;
+    _cam->setUserCallback(userCallback, this);
 
     printf("RaspiCamDriver::setResolution end\n");
+    return true;
 }
 
 size_t RaspiCamDriver::getFrameSize(){

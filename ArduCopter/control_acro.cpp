@@ -2,7 +2,7 @@
 #include "Copter.h"
 #include "MyLogger.h"
 
-#define RADIAN_TO_DEG(r) ((r)*90.0/ M_PI_2)
+#define RADIAN_TO_DEG(r) ((r)*(90.0/ M_PI_2))
 #define RCIN(n) (g.rc_##n.get_radio_in())
 
 static uint32_t lastUpdate;
@@ -80,17 +80,11 @@ bool Copter::acro_init(bool ignore_checks)
 
 
 
-#define log_rangefinder 10
-    //myLogger.printVal(log_rangefinder, "rangefinder");
+#define log_VISION_delay 12
+    myLogger.printVal(log_VISION_delay, "vision delay");
+#define log_VISION_res 13
+    myLogger.printVal(log_VISION_res, "vision res (*240)");
 
-
-
-#define log_VISION_pich 11
-    //myLogger.printVal(log_VISION_pich, "vision pitch");
-#define log_VISION_roll 12
-    //myLogger.printVal(log_VISION_roll, "vision roll");
-#define log_VISION_yaw 13
-    //myLogger.printVal(log_VISION_yaw, "vision yaw");
 #define log_VISION_status 14
     myLogger.printVal(log_VISION_status, "vision status");
 #define log_VISION_dots 15
@@ -148,14 +142,42 @@ bool Copter::acro_init(bool ignore_checks)
     myLogger.printVal(log_vel_x, "vel x");
 #define log_vel_x_filt 38
     myLogger.printVal(log_vel_x_filt, "vel x-filt");
+#define log_vel_y 39
+    myLogger.printVal(log_vel_y, "vel y");
+#define log_vel_y_filt 40
+    myLogger.printVal(log_vel_y_filt, "vel y-filt");
 
-#define log_VISION_X 39
+#define log_window_size 41
+    myLogger.printVal(log_window_size, "window_size");
+
+
+#define log_rangefinder 42
+    //myLogger.printVal(log_rangefinder, "rangefinder");
+
+#define log_VISION_X 43
     //myLogger.printVal(log_VISION_X, "vision x");
+
+#define log_VISION_pich 44
+    //myLogger.printVal(log_VISION_pich, "vision pitch");
+#define log_VISION_roll 45
+    //myLogger.printVal(log_VISION_roll, "vision roll");
+#define log_VISION_yaw 46
+    //myLogger.printVal(log_VISION_yaw, "vision yaw");
+
+#define log_VISION_angle_0 47
+    myLogger.printVal(log_VISION_angle_0, "VISION_angle_0");
+#define log_VISION_angle_1 48
+    myLogger.printVal(log_VISION_angle_1, "VISION_angle_1");
+#define log_VISION_angle_2 49
+    myLogger.printVal(log_VISION_angle_2, "VISION_angle_2");
+#define log_VISION_angle_3 50
+    myLogger.printVal(log_VISION_angle_3, "VISION_angle_3");
 
 
     return true;
 }
 
+#define CONVERGENCE_TEST 1
 
 // acro_run - runs the acro controller
 // should be called at 100hz or more
@@ -167,7 +189,7 @@ void Copter::acro_run()
     uint32_t now_us = AP_HAL::micros();
 
     static bool loging;
-    if (RCIN(6) > 1500){
+    if (RCIN(6) > 1400){
         if (!loging){
             loging = true;
             printf("start logging sw: %d\n", RCIN(6));
@@ -177,6 +199,7 @@ void Copter::acro_run()
         if (loging){
             loging = false;
             printf("stop logging sw: %d\n", RCIN(6));
+            printf("resolution = %d X %d\n", vision.getHeight(), vision.getWidth());
             vision.showStatistics();
         }
     }
@@ -187,6 +210,51 @@ void Copter::acro_run()
         lastPrint = now_us;
         need_print = true;
     }
+
+
+    // Dynamic resolution
+    static int resMode;
+#if CONVERGENCE_TEST
+    int resModeNew =  (RCIN(8) > 1500 ? 3 : 0); // AUX2  - only 240P or 960P
+#else
+    int resModeNew = (RCIN(7) > 1500 ? 1 : 0) // AUX1
+                   + (RCIN(8) > 1500 ? 1<<1 : 0); // AUX2
+#endif
+
+    myLogger.putVal(log_VISION_res, resMode);
+
+    if (resMode != resModeNew){
+        resMode = resModeNew;
+        switch (resMode) {
+        case 0: // DD
+            if (!vision.setResolution(240, 320)){ // factor of 240X320
+                printf("vision.setResolution(240, 320) fail!\n");
+            }
+            break;
+        case 1: // UD
+            if (!vision.setResolution(480, 640)){ // factor of 240X320
+                printf("vision.setResolution(480, 640) fail!\n");
+            }
+            break;
+        case 2: // DU
+            if (!vision.setResolution(720, 960)){ // factor of 240X320
+                printf("vision.setResolution(720, 960) fail!\n");
+            }
+            break;
+        case 3: // UU
+            if (!vision.setResolution(960, 1280)){ // factor of 240X320
+                printf("vision.setResolution(960, 1280) fail!\n");
+            }
+            break;
+
+        default:
+            break;
+        }
+        printf("res= %d X %d\n", vision.getHeight(), vision.getWidth());
+        vision.initStatistics();
+    }
+
+
 
 
     /*******************************/
@@ -272,9 +340,7 @@ void Copter::acro_run()
             // new data!
             newVisionData = true;
             pointCount = vision.getBestPoints(p, 6); // TODO - for testing
-            if (4 == pointCount){
-                vision.reorderPoints(p);
-            }
+            vision.reorderPoints(p, pointCount);
             if (0 < pointCount){
                 myLogger.putVal(log_VISION_mass, p[0].mass);
             }
@@ -375,38 +441,73 @@ void Copter::acro_run()
     /************************/
 
     // high level controller
+#define WINDOW_SIZE_TARGET 1.8570
+#define WINDOW_SIZE_MUL_FACTOR 0.67
     static float centerOfMass_x=0.0f; // 'S_x' from hanoch paper
-    static float centerOfMass_y=0.1f; // 'S_y' from hanoch paper
+    static float centerOfMass_y=0.0f; // 'S_y' from hanoch paper
+    static float visionDistance =0.0f; // Average size of line in the window
     static float vertical_diff=0.0f;  // 'V_d' from hanoch paper
     static float vertical_diff_filt=0.0f;  // 'V_d' from hanoch paper
+
+    //static float dotsAngle[4];
 
     static int lastPointCount = 0;
 #if VISION
     if(newVisionData){
         if (4 == pointCount){
-            lastPointCount = pointCount;
+            //lastPointCount = pointCount;
 
-            centerOfMass_x = (p[0].x + p[1].x + p[2].x + p[3].x ) / 4.0f;
+            centerOfMass_x = (p[0].x + p[1].x + p[2].x + p[3].x ) / 4.0;
 
-            centerOfMass_y = (p[0].y + p[1].y + p[2].y + p[3].y ) / 4.0f;
+            centerOfMass_y = (p[0].y + p[1].y + p[2].y + p[3].y ) / 4.0;
 
+            visionDistance = (p[3].y - p[0].y) + (p[2].y - p[1].y)
+                             + (p[0].x - p[1].x) + (p[3].x - p[2].x);
+            visionDistance *= WINDOW_SIZE_MUL_FACTOR;
+            visionDistance += WINDOW_SIZE_TARGET;
 
             float temp_Vd =  -(p[0].y - p[3].y - (p[1].y - p[2].y)) /
                     (p[0].y - p[3].y + (p[1].y - p[2].y));
-            if (abs(temp_Vd - vertical_diff_filt) > 0.1f){
+            if (0.3 < (temp_Vd - vertical_diff_filt) ||
+                    -0.3 > (temp_Vd - vertical_diff_filt)){
                 temp_Vd = vertical_diff_filt;
             }
+
+            // add distance factor (linear aproximation)
+            if (visionDistance < -1){
+                temp_Vd = 0;
+            } else {
+                temp_Vd = temp_Vd * (1+visionDistance) * 0.65;
+            }
+
             vertical_diff = temp_Vd;
 
             myLogger.putVal(log_VISION_Vd, vertical_diff);
-            vertical_diff_filt = vertical_diff_filt*0.95f + vertical_diff * 0.05f;
+            switch (resMode) {
+            case 0: // DD (240, 320)
+                vertical_diff_filt = vertical_diff_filt*0.95f + vertical_diff * 0.05f;
+                break;
+            case 1: // UD (480, 640)
+                vertical_diff_filt = vertical_diff_filt*0.95f + vertical_diff * 0.05f;
+                break;
+            case 2: // DU (720, 960)
+                vertical_diff_filt = vertical_diff_filt*0.92f + vertical_diff * 0.08f;
+                break;
+            case 3: // UU (960, 1280)
+                vertical_diff_filt = vertical_diff_filt*0.85f + vertical_diff * 0.15f;
+                break;
 
+            default:
+                vertical_diff_filt = 0;
+                break;
+            }
 
+            // dots angle
 
         } else if (3 == pointCount){
             // keep last values
+#if 0
         } else if (2 == pointCount && 2 <= lastPointCount){
-            lastPointCount = pointCount;
             if(centerOfMass_y < -0.4 &&  // if was low
                     p[0].y < 0 && p[1].y < 0){
                 // too low
@@ -428,14 +529,41 @@ void Copter::acro_run()
                 // too left
                 centerOfMass_x = +0.8f;
             }
+            lastPointCount = pointCount;
+#endif
+        } else if (2 == pointCount && 2 == lastPointCount){
+            if( p[0].y > 0.2 && p[1].y > 0.2 &&                                 // if is low
+                    (0.2 > (p[0].y - p[1].y)) && (-0.2 < (p[0].y - p[1].y)) ){  // if is horizontal line
+                // too low
+                centerOfMass_x = (p[0].x + p[1].x) / 2.0f;
+                //centerOfMass_y = 0.8;
+                /*
+                visionDistance = (p[0].x - p[1].x)*WINDOW_SIZE_MUL_FACTOR;
+                if (0.0 > visionDistance){
+                    visionDistance = -visionDistance;
+                }
+                visionDistance -= WINDOW_SIZE_TARGET;
+                */
+                visionDistance = visionDistance*0.7;
+
+            }
+
         } else {
+
             if(2 > pointCount && 2 > lastPointCount){
                 centerOfMass_x = 0.0;
                 centerOfMass_y = 0.0;
+                visionDistance = 0;
+            } else{
+                centerOfMass_x *= 0.95;
+                centerOfMass_y *= 0.95;
             }
             lastPointCount = 0;
         }
+        lastPointCount = pointCount;
     } // newVisionData
+
+    myLogger.putVal(log_window_size, visionDistance);
     myLogger.putVal(log_VISION_Sx, centerOfMass_x);
     myLogger.putVal(log_VISION_Sy, centerOfMass_y);
     myLogger.putVal(log_VISION_Vd_filt, vertical_diff_filt);
@@ -446,7 +574,7 @@ void Copter::acro_run()
 #define KP_P 0.10f
 #define KP_Q 0.12f
 //#define KP_R 0.8f
-#define KP_R 1.2f
+#define KP_R 1.4f
 #if NATNET
     static float last_alt, vertical_vel_filt;
     #if NATNET_POS_HOLD
@@ -469,6 +597,8 @@ void Copter::acro_run()
             printf("zero!\n");
             delta_time_vision_sec = 0.0000005f;
         }
+
+        myLogger.putVal(log_VISION_delay, delta_time_vision_sec);
     }
 
     static uint32_t last_time_us;
@@ -497,10 +627,29 @@ void Copter::acro_run()
         #define KD_X 0.12f
 
         #if VISION && VISION_CONTROL
-            cur_x = vertical_diff_filt * 20.0f; // Override optitrack
+
+            #if CONVERGENCE_TEST
+                if (RCIN(7) > 1500) { // AUX1  - only 240P or 960P
+                    // move aside
+                    if (!natNet.healthy()){
+                        // use only camera
+                        cur_x = vertical_diff_filt * 30.0f; // Override optitrack (*20)
+                    }
+                    cur_x +=0.7;
+                } else {
+                    // back to normal control
+                    cur_x = vertical_diff_filt * 30.0f; // Override optitrack (*20)
+                }
+            #else
+                cur_x = vertical_diff_filt * 30.0f; // Override optitrack (*20)
+            #endif
+
 
             if (newVisionData) {
                 float x_vel;
+                if (0.4 < (last_x - cur_x) || -0.4 > (last_x - cur_x)){
+                    last_x = cur_x;
+                }
                 if (4 == pointCount){       // if good data
                     float delta_x = cur_x - last_x;
                     x_vel = delta_x / delta_time_vision_sec;
@@ -508,7 +657,7 @@ void Copter::acro_run()
                     x_vel = 0.0f;
                 }
 
-                x_vel_filt = x_vel_filt*0.9f + x_vel*0.1f;
+                x_vel_filt = x_vel_filt*0.85f + x_vel*0.15f;
                 //x_vel_filt = x_vel_filt*0.98f + x_vel*0.02f;
                 last_x = cur_x;
                 myLogger.putVal(log_vel_x, x_vel);
@@ -523,7 +672,7 @@ void Copter::acro_run()
 
         myLogger.putVal(log_vel_x_filt, x_vel_filt);
 
-        pilot_roll_scaled += -KP_X*cur_x -KD_X*x_vel_filt*2.0f;
+        pilot_roll_scaled += -KP_X*cur_x*0.8 -KD_X*x_vel_filt*2.5;
     #endif
 
     float error_angle_roll = (pilot_roll_scaled - 2*roll_angle)*3.0f;
@@ -538,13 +687,52 @@ void Copter::acro_run()
     float pilot_pitch_scaled = pilot_pitch; // * 0.93f;        // scale RC input
 
     #if NATNET && NATNET_POS_HOLD
-        #define KP_Z 0.25f
+        #define KP_Z 0.27f
         #define KD_Z 0.12f
 
-        float delta_Z = cur_z - last_z;
-        float z_vel = delta_Z / delta_time_sec;
-        last_z = cur_z;
-        z_vel_filt = z_vel_filt*0.9f + z_vel*0.1f;
+        #if VISION && VISION_CONTROL
+
+            #if CONVERGENCE_TEST
+                if (RCIN(7) > 1500) { // AUX1  - only 240P or 960P
+                    // move aside
+                    if (!natNet.healthy()){
+                        // use only camera
+                        cur_z = visionDistance; // Override optitrack (*20)
+                    }
+                    //use the natnet data
+                } else {
+                    // back to normal control
+                    cur_z = visionDistance; // Override optitrack (*20)
+                }
+            #else
+                cur_z = visionDistance; // Override optitrack (*20)
+            #endif
+
+
+            if (newVisionData) {
+                float z_vel;
+                if (4 == pointCount){       // if good data
+                    float delta_Z = cur_z - last_z;
+                    z_vel = delta_Z / delta_time_vision_sec;
+                } else {
+                    z_vel = 0.0f;
+                }
+
+                z_vel_filt = z_vel_filt*0.9f + z_vel*0.1f;
+                //x_vel_filt = x_vel_filt*0.98f + x_vel*0.02f;
+                last_z = cur_z;
+                //myLogger.putVal(log_vel_z, z_vel);
+                //printf("delta_time_vision_sec = %f, x_vel= %f, last_x= %f\n", delta_time_vision_sec, cur_x, last_x);
+            }
+        #else
+
+            float delta_Z = cur_z - last_z;
+            float z_vel = delta_Z / delta_time_sec;
+            last_z = cur_z;
+            z_vel_filt = z_vel_filt*0.9f + z_vel*0.1f;
+
+        #endif
+
 
         pilot_pitch_scaled += -KP_Z*cur_z -KD_Z*z_vel_filt;
     #endif
@@ -568,34 +756,61 @@ void Copter::acro_run()
         }
     #endif
 
-    float yaw_scaled = yaw_angle * 1.6f;
+    float yaw_scaled = yaw_angle * 1.8f;   // was 1.6
     float error_vel_yaw = pilot_yaw_scaled + yaw_scaled - insGyro.z;
     float yaw_cmd  = error_vel_yaw * KP_R;               // the output!
     yaw_cmd = constrain_float(yaw_cmd, -1.0f, +1.0f);
 
     /* throttle */
     static float throtle_cmd = 0;
+    static float throtle_I = 0;
     #if NATNET
-        if (natNet.initialized()) {
-            float delta_alt = cur_alt - last_alt;
-            float vertical_vel = delta_alt / delta_time_sec;
-            last_alt = cur_alt;
-            vertical_vel_filt = vertical_vel_filt*0.9f + vertical_vel*0.1f;
+        //if (natNet.initialized()) {
+            cur_alt = -centerOfMass_y;
+            if (newVisionData){
+                float vertical_vel;
+                if (4 == pointCount){
+                    float delta_alt = cur_alt - last_alt;
+                    vertical_vel = delta_alt / delta_time_vision_sec;
+                } else {
+                    vertical_vel = 0;
+                }
+                last_alt = cur_alt;
+                vertical_vel_filt = vertical_vel_filt*0.8f + vertical_vel*0.2f;
+                myLogger.putVal(log_vel_y_filt, vertical_vel_filt);
+                myLogger.putVal(log_vel_y, vertical_vel);
+            }
 
-            float pilot_throtle_scaled = pilot_throttle*1.8;
-            float error_throtle = (pilot_throtle_scaled - cur_alt)*0.2f;
-            float hover_throtle = 0.3f; // full battery: 0.3;
+            if (4 != pointCount){
+                vertical_vel_filt = vertical_vel_filt*0.95f;
+            }
+
+            //float pilot_throtle_scaled = pilot_throttle*1.8;
+            float error_throtle = (0.0f - cur_alt)*0.2f;
+            //float hover_throtle = 0.3f; // full battery: 0.3;
 
             // Safety first - constrain_float() convert 'nan' to 0.5
-            throtle_cmd = (hover_throtle + error_throtle - vertical_vel_filt*0.1f);
+            //throtle_cmd = (hover_throtle + error_throtle - vertical_vel_filt*0.1f);
+
+            if (motors.armed() && !ap.throttle_zero && 4 == pointCount){
+                throtle_I += error_throtle * 0.0001;
+            }
+            #define throtle_I_LINIT 0.15
+            if (throtle_I > throtle_I_LINIT){
+                throtle_I = throtle_I_LINIT;
+            } else if (throtle_I < -throtle_I_LINIT){
+                throtle_I = -throtle_I_LINIT;
+            }
+
+            throtle_cmd = ((pilot_throttle + throtle_I) + error_throtle - vertical_vel_filt*0.1f);
             if(isnan(throtle_cmd)){
                 throtle_cmd = 0;
             } else {
                 throtle_cmd = constrain_float( throtle_cmd , 0.0f, +1.0f);
             }
-        } else {
-            throtle_cmd = pilot_throttle;
-        }
+        //} else {
+        //    throtle_cmd = pilot_throttle;
+       // }
     #else
         throtle_cmd = pilot_throttle;
     #endif
